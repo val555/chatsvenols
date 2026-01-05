@@ -1,0 +1,66 @@
+/* Override les textes inclusifs */
+.collection-list__no-results p {
+  font-size: 0;
+
+  &::before {
+    content: 'Aucun reproducteur trouvé.';
+    font-size: 14px;
+    display: block;
+  }
+}
+
+.collection-list__no-results .btn__label {
+  font-size: 0;
+
+  &::after {
+    content: 'Ajouter Reproducteur';
+    font-size: 14px;
+  }
+}
+
+/* --- TITRE DE LA PAGE DE CRÉATION --- */
+.doc-controls__value {
+  font-size: 0;
+
+  &::before {
+    content: 'Ajouter Reproducteur';
+    font-size: 14px;
+    display: block;
+  }
+}
+
+/* --- BOUTON "Choisir parmi les existant(e)s" --- */
+.upload__listToggler .btn__label {
+  font-size: 0;
+
+  &::after {
+    content: 'Choisir parmi les existantes';
+    font-size: 14px;
+  }
+}
+
+/* Affixe field - améliorer la visibilité du bouton (+) */
+.field-type__affixe {
+  .rs__control {
+    border-color: var(--color-primary);
+    
+    &:hover {
+      border-color: var(--color-primary-hover);
+    }
+  }
+  
+  /* Bouton créer affixe - mettre en évidence */
+  .relationship-admin-drawer-toggler {
+    font-weight: 600;
+    opacity: 1;
+  }
+}
+
+/* Message d'aide dans le champ affixe */
+.field-type__affixe::after {
+  content: 'Tapez un affixe existant ou cliquez (+) pour en ajouter un';
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}

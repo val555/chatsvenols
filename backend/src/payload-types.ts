@@ -177,27 +177,50 @@ export interface Affix {
   createdAt: string;
 }
 /**
- * Gérez ici vos chats adultes.
- *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "reproducteurs".
  */
 export interface Reproducteur {
   id: number;
-  sexe: 'male' | 'femelle';
+  /**
+   * Sauvegardez pour lancer le scraping LOOF automatique.
+   */
+  numero_identification: string;
+  statut: 'actif' | 'retraite' | 'decede';
+  sqr?: string | null;
+  ordre?: number | null;
+  etoiles?: ('1' | '2' | '3' | '4' | '5') | null;
   nom: string;
+  sexe: 'male' | 'femelle';
   affixe: number | Affix;
   nomComplet?: string | null;
-  ordre?: number | null;
-  dateNaissance?: string | null;
+  race?: string | null;
   couleur?: string | null;
-  titre?: string | null;
-  etoiles?: ('1' | '2' | '3' | '4' | '5') | null;
-  parents?: {
-    pere?: string | null;
-    mere?: string | null;
-  };
+  dateNaissance?: string | null;
+  titres?:
+    | {
+        nom: string;
+        federation?: string | null;
+        date?: string | null;
+        id?: string | null;
+      }[]
+    | null;
   photo: number | Media;
+  photos_galerie?:
+    | {
+        image?: (number | null) | Media;
+        id?: string | null;
+      }[]
+    | null;
+  pere_interne?: (number | null) | Reproducteur;
+  pere_externe?: string | null;
+  mere_interne?: (number | null) | Reproducteur;
+  mere_externe?: string | null;
+  pedigree_officiel?: (number | null) | Media;
+  sante?: {
+    dna_id?: string | null;
+    tests_sante?: string | null;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -338,22 +361,44 @@ export interface AffixesSelect<T extends boolean = true> {
  * via the `definition` "reproducteurs_select".
  */
 export interface ReproducteursSelect<T extends boolean = true> {
-  sexe?: T;
+  numero_identification?: T;
+  statut?: T;
+  sqr?: T;
+  ordre?: T;
+  etoiles?: T;
   nom?: T;
+  sexe?: T;
   affixe?: T;
   nomComplet?: T;
-  ordre?: T;
-  dateNaissance?: T;
+  race?: T;
   couleur?: T;
-  titre?: T;
-  etoiles?: T;
-  parents?:
+  dateNaissance?: T;
+  titres?:
     | T
     | {
-        pere?: T;
-        mere?: T;
+        nom?: T;
+        federation?: T;
+        date?: T;
+        id?: T;
       };
   photo?: T;
+  photos_galerie?:
+    | T
+    | {
+        image?: T;
+        id?: T;
+      };
+  pere_interne?: T;
+  pere_externe?: T;
+  mere_interne?: T;
+  mere_externe?: T;
+  pedigree_officiel?: T;
+  sante?:
+    | T
+    | {
+        dna_id?: T;
+        tests_sante?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }

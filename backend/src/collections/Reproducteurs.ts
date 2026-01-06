@@ -1,212 +1,290 @@
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig } from 'payload';
+import { scrapeReproducteurByChip } from '../utils/loof-scraper/scrapers/reproducteur';
+import { LoofSyncField } from '../components/LoofSyncField';
 
 export const Reproducteurs: CollectionConfig = {
   slug: 'reproducteurs',
-  
-  labels: {
-    singular: {
-      en: 'Reproducteur',
-      fr: 'Reproducteur',
-    },
-    plural: {
-      en: 'Reproducteurs',
-      fr: 'Reproducteurs',
-    },
-  },
-
   admin: {
     useAsTitle: 'nomComplet',
-    defaultColumns: ['nomComplet', 'sexe', 'titre'],
-    description: 'Gérez ici vos chats adultes.',
+    defaultColumns: ['nomComplet', 'numero_identification', 'statut', 'sqr'],
+    group: 'Élevage',
   },
+  access: {
+    read: () => true,
+  },
+  hooks: {
+    beforeChange: [
+      async ({ data, originalDoc, operation }) => {
+        // Clonage propre pour éviter deepmerge loop
+        const cleanData = JSON.parse(JSON.stringify(data));
 
+        const newPuce = cleanData.numero_identification;
+        const oldPuce = originalDoc?.numero_identification;
+        // On déclenche scraping à la création OU si le numéro change à l'update
+        const shouldScrape = (operation === 'create' && newPuce) || (operation === 'update' && newPuce && newPuce !== oldPuce);
+
+        if (shouldScrape) {
+          console.log(`🤖 Scraping LOOF activé pour la puce : ${newPuce}`);
+          try {
+            const result = await scrapeReproducteurByChip(newPuce);
+
+            if (result.success && result.data) {
+              const info = result.data;
+              
+              cleanData.race = info.race || cleanData.race;
+              cleanData.couleur = info.couleur || cleanData.couleur;
+              cleanData.sexe = info.sexe || cleanData.sexe;
+              cleanData.sqr = info.sqr || cleanData.sqr;
+              
+              if (info.titres && info.titres.length > 0) {
+                // Typage any pour contourner le check strict ici
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                cleanData.titres = info.titres.map((t: any) => ({
+                  nom: t.titre,
+                  federation: t.federation,
+                  date: t.date_obtention
+                }));
+              }
+              console.log('✨ Données fusionnées avec succès');
+            }
+          } catch (e) {
+            console.error("❌ Erreur non bloquante dans le hook :", e);
+          }
+        }
+        return cleanData;
+      }
+    ]
+  },
   fields: [
-    // ============================================
-    // 1. SEXE (En premier)
-    // ============================================
     {
-      name: 'sexe',
-      type: 'select',
-      label: 'Sexe',
-      options: [
-        { label: 'Mâle', value: 'male' },
-        { label: 'Femelle', value: 'femelle' },
-      ],
+      name: 'numero_identification',
+      type: 'text',
+      label: 'N° Identification',
       required: true,
+      unique: true,
+      admin: {
+        components: {
+          // Cast 'as any' pour éviter le conflit de types React.FC vs Payload Component
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Field: LoofSyncField as any,
+        },
+      },
     },
-
-    // ============================================
-    // 2. NOM + AFFIXE (Sur la même ligne)
-    // ============================================
+    {
+      type: 'row',
+      fields: [
+        {
+          name: 'statut',
+          type: 'select',
+          options: [
+            { label: 'Actif', value: 'actif' },
+            { label: 'Retraité', value: 'retraite' },
+            { label: 'Décédé', value: 'decede' },
+          ],
+          defaultValue: 'actif',
+          required: true,
+          admin: { width: '50%' },
+        },
+        {
+          name: 'sqr',
+          type: 'text',
+          label: 'Niveau SQR (LOOF)',
+          admin: { width: '50%' },
+        },
+      ],
+    },
+    {
+      type: 'row',
+      fields: [
+        {
+          name: 'ordre',
+          type: 'number',
+          label: 'Ordre d\'affichage',
+          defaultValue: 10,
+          admin: { width: '50%' },
+        },
+        {
+          name: 'etoiles',
+          type: 'select',
+          label: 'Qualité',
+          options: [
+            { label: '1 ⭐', value: '1' },
+            { label: '2 ⭐⭐', value: '2' },
+            { label: '3 ⭐⭐⭐', value: '3' },
+            { label: '4 ⭐⭐⭐⭐', value: '4' },
+            { label: '5 ⭐⭐⭐⭐⭐', value: '5' },
+          ],
+          admin: { width: '50%' },
+        },
+      ],
+    },
     {
       type: 'row',
       fields: [
         {
           name: 'nom',
           type: 'text',
-          label: 'Nom du chat (sans affixe)',
           required: true,
-          admin: { 
-            width: '50%',
-            placeholder: 'ex: Simba, Luna, Félix',
-          },
+          label: 'Nom court (sans affixe)',
         },
         {
-          name: 'affixe',
-          type: 'relationship',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          relationTo: 'affixes'as any,
-          label: 'Affixe / Élevage',
+          name: 'sexe',
+          type: 'select',
           required: true,
-          admin: {
-            width: '50%',
-            allowCreate: true,
-          },
+          options: [
+            { label: 'Mâle', value: 'male' },
+            { label: 'Femelle', value: 'femelle' },
+          ],
         },
       ],
     },
-
-    // ============================================
-    // 3. CHAMP CALCULÉ (Invisible, mais stocké)
-    // ============================================
+    {
+      name: 'affixe',
+      type: 'relationship',
+      relationTo: 'affixes',
+      required: true,
+    },
     {
       name: 'nomComplet',
       type: 'text',
-      label: 'Nom Complet (Calculé)',
-      admin: { hidden: true },
+      admin: { readOnly: true },
       hooks: {
         beforeChange: [
           async ({ data, req }) => {
-            if (data?.nom && data?.affixe) {
-              const affixeId = typeof data.affixe === 'object' 
-                ? data.affixe.id 
-                : data.affixe;
-
-              try {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const affixeDoc = await req.payload.findByID({
-                  collection: 'affixes' as any,
-                  id: affixeId,
-                }) as Record<string, any> // Temporary: permet à TS de passer
-
-                if (affixeDoc) {
-                  if (affixeDoc.position === 'prefix') {
-                    return `${affixeDoc.nom} ${data.nom}`;
-                  }
-                  return `${data.nom} ${affixeDoc.nom}`;
-                }
-              } catch (error) {
-                console.error('Erreur récupération affixe:', error)
-              }
-            }
-
-            return data?.nom || '';
-          }
+            if (!data?.affixe) return data?.nom;
+            const affixe = await req.payload.findByID({
+              collection: 'affixes',
+              id: data.affixe as number,
+            });
+            if (!affixe) return data.nom;
+            return affixe.position === 'prefix'
+              ? `${affixe.nom} ${data.nom}`
+              : `${data.nom} ${affixe.nom}`;
+          },
         ],
       },
     },
-
-    // ============================================
-    // 4. ORDRE D'AFFICHAGE
-    // ============================================
     {
-      name: 'ordre',
-      type: 'number',
-      label: 'Ordre d\'affichage',
-      defaultValue: 10,
-    },
-
-    // ============================================
-    // 5. DATE DE NAISSANCE
-    // ============================================
-    {
-      name: 'dateNaissance',
-      type: 'date',
-      label: 'Date de Naissance',
-      admin: {
-        date: {
-          pickerAppearance: 'dayOnly',
-          displayFormat: 'dd/MM/yyyy',
-        },
-      },
-    },
-
-    // ============================================
-    // 6. ROBE / COULEUR
-    // ============================================
-    {
-      name: 'couleur',
-      type: 'text',
-      label: 'Robe / Couleur',
-      admin: {
-        placeholder: 'ex: Brown mackerel tabby et blanc',
-      },
-    },
-
-    // ============================================
-    // 7. TITRE
-    // ============================================
-    {
-      name: 'titre',
-      type: 'text',
-      label: 'Titre (le cas échéant)',
-      admin: {
-        placeholder: 'ex: Grand Champion International',
-      },
-    },
-
-    // ============================================
-    // 8. NOTE / QUALITÉ
-    // ============================================
-    {
-      name: 'etoiles',
-      type: 'select',
-      label: 'Note',
-        options: [
-        { label: '1 étoiles', value: '1' },
-        { label: '2 étoiles', value: '2' },
-        { label: '3 étoiles', value: '3' },
-        { label: '4 étoiles', value: '4' },
-        { label: '5 étoiles', value: '5' },
-      ],
-    },
-
-    // ============================================
-    // 9. GÉNÉALOGIE (Group field)
-    // ============================================
-    {
-      name: 'parents',
-      type: 'group',
-      label: 'Généalogie',
+      type: 'row',
       fields: [
         {
-          name: 'pere',
+          name: 'race',
           type: 'text',
-          label: 'Nom du Père',
-          admin: {
-            placeholder: 'ex: Cherokee',
-          },
+          defaultValue: 'Maine Coon',
+          admin: { width: '50%' },
         },
         {
-          name: 'mere',
+          name: 'couleur',
           type: 'text',
-          label: 'Nom de la Mère',
-          admin: {
-            placeholder: 'ex: Ghost Rider',
-          },
+          label: 'Couleur / Robe',
+          admin: { width: '50%' },
         },
-      ],
+      ]
     },
-
-    // ============================================
-    // 10. PHOTO PRINCIPALE
-    // ============================================
+    {
+      type: 'row',
+      fields: [
+        {
+          name: 'dateNaissance',
+          type: 'date',
+          admin: { date: { pickerAppearance: 'dayOnly' }, width: '100%' },
+        },
+      ]
+    },
+    {
+      name: 'titres',
+      type: 'array',
+      label: 'Titres & Distinctions',
+      fields: [
+        {
+          type: 'row',
+          fields: [
+            { name: 'nom', type: 'text', label: 'Titre', required: true, admin: { width: '40%' } },
+            { name: 'federation', type: 'text', label: 'Fédération', admin: { width: '20%' } },
+            { name: 'date', type: 'text', label: 'Date', admin: { width: '40%' } }
+          ]
+        }
+      ]
+    },
     {
       name: 'photo',
       type: 'upload',
       relationTo: 'media',
       required: true,
-      label: 'Photo Principale',
+    },
+    {
+      name: 'photos_galerie',
+      type: 'array',
+      label: 'Galerie Photos',
+      fields: [
+        {
+          name: 'image',
+          type: 'upload',
+          relationTo: 'media',
+        },
+      ],
+    },
+    {
+      label: 'Généalogie (Parents)',
+      type: 'collapsible',
+      fields: [
+        {
+          type: 'row',
+          fields: [
+            {
+              name: 'pere_interne',
+              type: 'relationship',
+              relationTo: 'reproducteurs',
+              filterOptions: { sexe: { equals: 'male' } },
+              label: 'Père (Interne)',
+            },
+            {
+              name: 'pere_externe',
+              type: 'text',
+              label: 'OU Père (Externe)',
+              admin: {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                condition: (_data: any, siblingData: any) => !siblingData?.pere_interne,
+              },
+            },
+          ],
+        },
+        {
+          type: 'row',
+          fields: [
+            {
+              name: 'mere_interne',
+              type: 'relationship',
+              relationTo: 'reproducteurs',
+              filterOptions: { sexe: { equals: 'femelle' } },
+              label: 'Mère (Interne)',
+            },
+            {
+              name: 'mere_externe',
+              type: 'text',
+              label: 'OU Mère (Externe)',
+              admin: {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                condition: (_data: any, siblingData: any) => !siblingData?.mere_interne,
+              },
+            },
+          ],
+        },
+        {
+          name: 'pedigree_officiel',
+          type: 'upload',
+          relationTo: 'media',
+          label: 'Scan Pedigree (PDF/Img)',
+        }
+      ],
+    },
+    {
+      name: 'sante',
+      type: 'group',
+      fields: [
+        { name: 'dna_id', type: 'text', label: 'Identification ADN' },
+        { name: 'tests_sante', type: 'textarea', label: 'Tests (HCM, PKD...)' },
+      ],
     },
   ],
-}
+};

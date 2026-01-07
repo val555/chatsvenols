@@ -37,7 +37,7 @@ export const scrapeReproducteurByChip = async (puce: string): Promise<LoofScrape
     const resultHtml = await submitRes.text();
     const $result = cheerio.load(resultHtml);
 
-    // ÉTAPE 3 : Parser UNIQUEMENT les champs présents (pas d'objet vide/corrompu)
+    // ÉTAPE 3 : Parser UNIQUEMENT les champs présents
     const data: LoofReproducteurData = {
       numero_identification: puce,
     };
@@ -81,31 +81,41 @@ export const scrapeReproducteurByChip = async (puce: string): Promise<LoofScrape
       data.sqr = sqrText;
     }
 
-        // Titres (depuis ul > li)
+    // Titres : Extraction corrigée
     const titres: Array<{ titre: string; federation: string; date_obtention: string }> = [];
     $result('ul[data-drupal-selector="edit-list"] li').each((_idx, el) => {
-      // Extraire directement les textes depuis l'élément el
-      const federationEl = cheerio.load(el)('span.placeholder.federation').first();
-      const titreEl = cheerio.load(el)('span.placeholder.i-title');
-      const dateEl = cheerio.load(el)('span.placeholder.federation').last();
-
-      const federation = federationEl.text().trim();
-      const titre = titreEl.text().trim();
-      const date = dateEl.text().trim();
+      const $li = cheerio.load(el);
+      
+      // Extraire le titre (span avec class i-title)
+      const titre = $li('span.placeholder.i-title').text().trim();
+      
+      // Extraire la date : c'est le TEXTE AFTER "Obtenu le :"
+      const liText = $li(el).text();
+      const dateMatch = liText.match(/Obtenu le\s*:\s*(\d{2}-\d{2}-\d{4})/);
+      const date_obtention = dateMatch ? dateMatch[1] : '';
 
       if (titre) {
+        // Extraire l'année de la date (2018 from 14-11-2018)
+        const year = date_obtention ? date_obtention.split('-')[2] : '';
+        const titreFormate = year ? `${titre} (${year})` : titre;
+        
         titres.push({
-          titre,
-          federation: federation || 'LOOF',
-          date_obtention: date,
+          titre: titreFormate,
+          federation: 'LOOF',
+          date_obtention: date_obtention
         });
       }
     });
 
+    // ✅ Trier par date (les plus récents d'abord)
     if (titres.length > 0) {
+      titres.sort((a, b) => {
+        const dateA = new Date(a.date_obtention.split('-').reverse().join('-')).getTime();
+        const dateB = new Date(b.date_obtention.split('-').reverse().join('-')).getTime();
+        return dateB - dateA; // DESC (plus récent d'abord)
+      });
       data.titres = titres;
     }
-
 
     console.log('✅ Scraping réussi:', data);
     return { success: true, data };

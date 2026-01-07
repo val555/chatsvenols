@@ -15,40 +15,58 @@ export const Reproducteurs: CollectionConfig = {
   hooks: {
     beforeChange: [
       async ({ data, originalDoc, operation }) => {
-        // Clonage propre pour éviter deepmerge loop
         const cleanData = JSON.parse(JSON.stringify(data));
 
         const newPuce = cleanData.numero_identification;
         const oldPuce = originalDoc?.numero_identification;
-        // On déclenche scraping à la création OU si le numéro change à l'update
         const shouldScrape = (operation === 'create' && newPuce) || (operation === 'update' && newPuce && newPuce !== oldPuce);
 
         if (shouldScrape) {
-          console.log(`🤖 Scraping LOOF activé pour la puce : ${newPuce}`);
+          console.log(`🤖 Scraping LOOF pour puce : ${newPuce}`);
           try {
             const result = await scrapeReproducteurByChip(newPuce);
 
             if (result.success && result.data) {
               const info = result.data;
               
-              cleanData.race = info.race || cleanData.race;
-              cleanData.couleur = info.couleur || cleanData.couleur;
-              cleanData.sexe = info.sexe || cleanData.sexe;
-              cleanData.sqr = info.sqr || cleanData.sqr;
+              // Mise à jour des champs simples
+              cleanData.race = info.race || 'Maine Coon';
+              cleanData.couleur = info.couleur ?? null;
+              cleanData.sexe = info.sexe || 'femelle';
+              cleanData.sqr = info.sqr ?? null;
               
-              if (info.titres && info.titres.length > 0) {
-                // Typage any pour contourner le check strict ici
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                cleanData.titres = info.titres.map((t: any) => ({
-                  nom: t.titre,
-                  federation: t.federation,
-                  date: t.date_obtention
-                }));
+              // Titres : Remplir titre_1 à titre_5 (déjà triés par date, récents d'abord)
+              cleanData.titre_1 = null;
+              cleanData.titre_2 = null;
+              cleanData.titre_3 = null;
+              cleanData.titre_4 = null;
+              
+              if (info.titres && Array.isArray(info.titres)) {
+                // ✅ Afficher les 4 titres les plus récents
+                info.titres.slice(0, 4).forEach((t: any, idx: number) => {
+                  cleanData[`titre_${idx + 1}`] = t.titre;
+                });
+
+                // ✅ Warning si plus de 4 titres
+                if (info.titres.length > 4) {
+                  console.warn(`
+⚠️ ATTENTION : ${info.titres.length} titres trouvés au LOOF.
+📌 Seuls les 4 titres les PLUS RÉCENTS sont affichés dans les champs.
+
+Les autres titres :
+${info.titres.slice(5).map((t: any) => `  - ${t.titre}`).join('\n')}
+
+💡 Vous pouvez ÉDITER les champs titre_1 à titre_5 à la main pour ajouter les autres titres si souhaité.
+                  `);
+                }
               }
-              console.log('✨ Données fusionnées avec succès');
+              
+              console.log('✅ Données nettoyées et fusionnées en base');
+            } else {
+              console.warn('⚠️ Scraping échoué, données non modifiées');
             }
           } catch (e) {
-            console.error("❌ Erreur non bloquante dans le hook :", e);
+            console.error("❌ Erreur hook:", e);
           }
         }
         return cleanData;
@@ -64,7 +82,6 @@ export const Reproducteurs: CollectionConfig = {
       unique: true,
       admin: {
         components: {
-          // Cast 'as any' pour éviter le conflit de types React.FC vs Payload Component
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           Field: LoofSyncField as any,
         },
@@ -192,18 +209,30 @@ export const Reproducteurs: CollectionConfig = {
       ]
     },
     {
-      name: 'titres',
-      type: 'array',
-      label: 'Titres & Distinctions',
+      label: 'Titres & Distinctions (LOOF)',
+      type: 'collapsible',
       fields: [
         {
-          type: 'row',
-          fields: [
-            { name: 'nom', type: 'text', label: 'Titre', required: true, admin: { width: '40%' } },
-            { name: 'federation', type: 'text', label: 'Fédération', admin: { width: '20%' } },
-            { name: 'date', type: 'text', label: 'Date', admin: { width: '40%' } }
-          ]
-        }
+          name: 'titre_1',
+          type: 'text',
+          label: 'Titre 1 (plus récent)',
+          admin: { description: 'Ex: Champion (2018)' }
+        },
+        {
+          name: 'titre_2',
+          type: 'text',
+          label: 'Titre 2',
+        },
+        {
+          name: 'titre_3',
+          type: 'text',
+          label: 'Titre 3',
+        },
+        {
+          name: 'titre_4',
+          type: 'text',
+          label: 'Titre 4',
+        },
       ]
     },
     {
